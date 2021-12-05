@@ -1,0 +1,304 @@
+---
+title: "Case Stude 02 - Attrition"
+author: "Edwin Karabidian"
+date: "11/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Executive Summary
+
+DDSAnalytics is an analytics company that specializes in talent management solutions for Fortune 100 companies.  The client, Frito Lay company, is seeking the help od DDSAnalytics to analyze and identify causes for employee attrition.  Frito Lay would like DDSAnalytics to identify the top three factors that contribute to turnover (backed up by evidence provided by analysis).
+Frito Lay has provided a dataset for this purpose.  This is a dataset of 870 employees’ information with the following data:
+ID
+Age
+DailyRate
+DistanceFromHome
+Education
+EmployeeCount
+EmployeeNumber
+EnvironmentSatisfaction
+HourlyRate
+JobInvolvement
+JobLevel
+JobSatisfaction
+MonthlyIncome
+MonthlyRate
+NumCompaniesWorked
+PercentSalaryHike
+PerformanceRating
+RelationshipSatisfaction
+StandardHours
+StockOptionLevel
+TotalWorkingYears
+TrainingTimesLastYear
+WorkLifeBalance
+YearsAtCompany
+YearsInCurrentRole
+YearsSinceLastPromotion
+YearsWithCurrManager
+Attrition
+
+DDSAnalytics constructed 2 models, Naïve Bayes and kNN, to predict attrition. After comparing the results, the Nive Bayes was more accurate and it met the Sensitivity and Specificity requirements.  Linear Regression Model was used for the salary predictor and it produced an RMSE of 1042.555, satisfying the requirement of <3000.
+
+GLM (Generalized Linear Model) method was used to rank features by importance, 
+Job Involvement, Job Satisfaction, and Number of companies worked.
+
+The following is the detailed analysis of the task.
+
+
+
+```{r}
+options(max.print=999999)
+options(tibble.print_max = Inf)
+library(tidyverse)
+library(caret)
+library(e1071)
+library(ggplot2)
+library(corrplot)
+library(class)
+library(GGally)
+library(Metrics) 
+library(dplyr)
+library(plyr)
+library(ggthemes)
+library(Amelia)
+library(mlbench)
+
+
+
+
+## Reading the attrition data provided by Frito Lay
+AttritionData = read.csv("C:/Users/Karabidian/Documents/SMU_2/Courses/02_Doing Dtat Science/_Case Study 2/_The Work/CaseStudy2-data.csv", header = TRUE)
+
+## checking to see if there are any NAs in the dataset (there aren't any)
+cbind(lapply(lapply(AttritionData, is.na), sum))
+
+```
+
+```{r}
+## Plotting Attrition (pie chart)
+yess = sum(AttritionData$Attrition == "Yes")
+nos = sum(AttritionData$Attrition == "No")
+
+perc_yes = yess/100
+perc_no = nos/100
+
+x <-  c(perc_no, perc_yes)
+pct <- round(100*x/sum(x),1)
+
+label <-  c("No","Yes")
+label <- paste(label, "(",pct)
+label <- paste(label, "% )", sep="")
+
+colors=c("brown","orange")
+pie(x,labels = label,  col = colors, main = "Attrition Rate at Frito Lay ",  cex.main=2, cex=1.5)
+
+```
+
+```{r}
+
+## Plotting Job Satisfaction Rate (pie chart)
+one = sum(AttritionData$JobSatisfaction == "1")
+two = sum(AttritionData$JobSatisfaction == "2")
+three = sum(AttritionData$JobSatisfaction == "3")
+four = sum(AttritionData$JobSatisfaction == "4")
+
+perc_one = one/100
+perc_two = two/100
+perc_three = three/100
+perc_four = four/100
+
+x <-  c(perc_one, perc_two, perc_three,perc_four )
+pct <- round(100*x/sum(x),1)
+
+label <-  c("1","2","3","4")
+label <- paste(label, "(",pct)
+label <- paste(label, "% )", sep="")
+
+colors=c("brown","orange", "yellow", "sky blue")
+pie(x,labels = label,  col = colors, main = "Job Satisfaction Rate at Frito Lay ",  cex.main=2, cex=1.5)
+
+```
+
+```{r}
+##  Plotting Age vs Job Satisfaction at Frito Lay
+
+table_count<-table(AttritionData$Age, AttritionData$JobSatisfaction)
+Job_Satisfaction <- data.frame(table_count)
+names(Job_Satisfaction) <- c('Age','Levels','count')
+ggplot(Job_Satisfaction, aes(Job_Satisfaction$Age,Job_Satisfaction$count, color=Job_Satisfaction$Levels)) + geom_point() + 
+  labs(title="Age and Job Satisfaction at Frito Lay",x="Age", y = "Count") +
+  theme_economist_white()
+
+```
+
+```{r}
+##  Plotting Years At Company vs Count at Frito Lay
+table_count<-table(AttritionData$YearsAtCompany, AttritionData$Attrition)
+Years_At_Company <- data.frame(table_count)
+names(Years_At_Company) <- c('YearsAt','Attrition','count')
+ggplot(Years_At_Company, aes(Years_At_Company$YearsAt,Years_At_Company$count, color=Years_At_Company$Attrition)) + geom_point() + labs(title="Years At Company vs Count at Frito Lay, (Attrition)",x="Years At Company", y = "Count") +
+  theme_economist_white()
+
+
+```
+
+```{r}
+## Plotting Age vs Attrition at Frito Lay
+
+AttritionData %>% ggplot() + geom_bar(aes(Age, fill= Attrition), position = "stack") + 
+  scale_fill_manual(values = c("Yes" = "orange","No" = "brown")) + ggtitle('Age vs Attrition at Frito Lay') +
+  theme_economist_white()
+```
+
+```{r}
+
+## Plotting demographics (pie chart)
+males = sum(AttritionData$Gender == "Male")
+females = sum(AttritionData$Gender == "Female")
+
+perc_males = males/100
+perc_females = females/100
+
+x <-  c(perc_males, perc_females)
+pct <- round(100*x/sum(x),1)
+
+label <-  c("Males","Females")
+label <- paste(label, "(",pct)
+label <- paste(label, "% )", sep="")
+
+colors=c("brown","orange")
+pie(x,labels = label,  col = colors, main = "Demographics at Frito Lay",  cex.main=2, cex=1.5)
+
+```
+```{r}
+## Changing "Yes"/"Y" and "No" to 1 and 0
+
+AttritionData$Attrition[AttritionData$Attrition=="Yes"]=1
+AttritionData$Attrition[AttritionData$Attrition=="No"]=0
+AttritionData$Attrition=as.numeric(AttritionData$Attrition)
+
+AttritionData$Over18[AttritionData$Over18=="Y"]=1
+AttritionData$Over18=as.numeric(AttritionData$Over18)
+
+## Changing all the character columns to factors
+AttritionData[,c(4,6,8,9,13,17,19,24)]=lapply(AttritionData[,c(4,6,8,9,13,17,19,24)],as.factor)
+
+```
+
+```{r}
+##  Now we choose and plot the top 3 Attrition Predictors
+#####  importance of features  ############
+
+set.seed(10)
+# load the library
+library(mlbench)
+library(caret)
+
+# load the dataset
+AttritionData = read.csv("C:/Users/Karabidian/Documents/SMU_2/Courses/02_Doing Dtat Science/_Case Study 2/_The Work/CaseStudy2-data.csv", header = TRUE)
+
+AttritionData$Attrition[AttritionData$Attrition=="Yes"]=1
+AttritionData$Attrition[AttritionData$Attrition=="No"]=0
+AttritionData$Attrition=as.numeric(AttritionData$Attrition)
+
+AttritionData$OverTime[AttritionData$OverTime=="Yes"]=1
+AttritionData$OverTime[AttritionData$OverTime=="No"]=0
+AttritionData$OverTime=as.numeric(AttritionData$Attrition)
+
+AttritionData$Over18[AttritionData$Over18=="Y"]=1
+AttritionData$Over18=as.numeric(AttritionData$Over18)
+
+AttritionData$Over18 <- NULL
+AttritionData$StandardHours <- NULL
+AttritionData$EmployeeCount <- NULL
+AttritionData$OverTime <- NULL
+
+# write.csv(AttritionData,"C:/Users/Karabidian/Documents/SMU_2/Courses/02_Doing Dtat Science/_Case Study 2/_The Work/out.csv", row.names = FALSE)
+
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=33, repeats=3)
+
+# train the model
+model <- train(Attrition~., data=AttritionData, method="glm", preProcess="scale", trControl=control)
+
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+
+# summarize importance
+print(importance)
+
+# plot importance
+plot(importance)
+
+```
+
+```{r}
+##  Plotting top three factors that contribute to Attrition 
+
+AttritionData = read.csv("C:/Users/Karabidian/Documents/SMU_2/Courses/02_Doing Dtat Science/_Case Study 2/_The Work/CaseStudy2-data.csv", header = TRUE)
+
+
+AttritionData %>% ggplot() + geom_bar(aes(JobInvolvement, fill= Attrition), position = "stack") +   scale_fill_manual(values = c("Yes" = "orange","No" = "brown")) + ggtitle('JobInvolvement vs Attrition')+theme_economist_white()
+
+
+AttritionData %>% ggplot() + geom_bar(aes(JobSatisfaction, fill= Attrition), position = "stack") +   scale_fill_manual(values = c("Yes" = "orange","No" = "brown")) + ggtitle('JobSatisfaction vs Attrition')+theme_economist_white()
+
+AttritionData %>% ggplot() + geom_bar(aes(NumCompaniesWorked, fill= Attrition), position = "stack") +   scale_fill_manual(values = c("Yes" = "orange","No" = "brown")) + ggtitle('NumCompaniesWorked vs Attrition')+theme_economist_white()
+
+```
+
+```{r}
+## Splitting the data in to train and test
+AttritionData = read.csv("C:/Users/Karabidian/Documents/SMU_2/Courses/02_Doing Dtat Science/_Case Study 2/_The Work/CaseStudy2-data.csv", header = TRUE)
+trainIndices = createDataPartition(AttritionData$Attrition, times = 1, p=0.7, list = FALSE)
+trainAttrition = AttritionData[trainIndices,]
+testAttrition = AttritionData[-trainIndices,]
+
+# nrow(trainAttrition)
+# nrow(testAttrition)
+
+```
+
+```{r}
+## Now we use Naive Bayes model for prediction
+
+model = naiveBayes(Attrition ~., data = trainAttrition)
+pred =predict(model, testAttrition)
+
+confusionMatrix(table(pred, testAttrition$Attrition))
+ 
+```
+
+```{r}
+## kNN modeling
+
+train_Numeric <- trainAttrition %>% select_if(is.numeric)
+test_Numeric <- testAttrition %>% select_if(is.numeric)
+
+train_Numeric$Attrition <- trainAttrition$Attrition
+test_Numeric$Attrition <- testAttrition$Attrition
+
+knn <- knn(train_Numeric[,1:27], test_Numeric[,1:27], train_Numeric$Attrition, prob = TRUE, k = 8)
+confusionMatrix(table(knn, test_Numeric$Attrition))
+
+```
+
+```{r}
+
+## Linear Model for the salary predictor
+## Salary depends on the following factors from the data: JobLevel, JobRole, and TotalWorkingYears
+## to find the RMSE the RMSE function was used. This was found on https://rdrr.io/cran/qpcR/man/RMSE.html 
+## The RMSE requirement for  Salary is RMSE < $3000, By using this function, the linear regression model, Salary_model, has a value of $1055.184.  Hence, the requirement is satisfied.
+
+Salary_model <- lm(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears, data = trainAttrition)
+summary(Salary_model)
+
+Salary_model.fit <- predict(Salary_model, newdata = testAttrition)
+rmse(testAttrition$MonthlyIncome, Salary_model.fit)
+
+
+```
